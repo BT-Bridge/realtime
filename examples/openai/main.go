@@ -7,85 +7,49 @@ import (
 	"go.uber.org/zap"
 )
 
-type RealtimeService interface {
-	NewClient() (RealtimeClient, error)
-}
-
-type RealtimeClient interface {
-	Logger() *shared.Logger
-	State() ClientState
-}
-
-type ImplConfig interface {
-	Name() string
-}
-
-type ClientState int
-
-const (
-	ClientStateInitial ClientState = iota
-)
-
-type baseClient struct {
-	logger *shared.Logger
-	state  ClientState
-}
-
-func newBaseClient(logger *shared.Logger) *baseClient {
-	return &baseClient{
-		logger: logger,
-		state:  ClientStateInitial,
-	}
-}
-
-func (c *baseClient) Logger() *shared.Logger {
-	return c.logger
-}
-
-func (c *baseClient) State() ClientState {
-	return c.state
-}
-
 type OpenaiRealtimeClient struct {
-	*baseClient
+	logger    *shared.Logger
+	apiKey    string
+	orgId     string
+	projectId string
+	baseUrl   string
 }
 
 func NewOpenaiRealtimeClient(logger *shared.Logger, apiKey, orgId, projectId, baseUrl string) (*OpenaiRealtimeClient, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("apiKey is required")
+	}
+	if orgId == "" {
+		return nil, fmt.Errorf("orgId is required")
+	}
+	if projectId == "" {
+		return nil, fmt.Errorf("projectId is required")
+	}
+	if baseUrl == "" {
+		baseUrl = "https://api.openai.com/v1"
+	}
 	return &OpenaiRealtimeClient{
-		baseClient: newBaseClient(logger),
+		logger:    logger,
+		apiKey:    apiKey,
+		orgId:     orgId,
+		projectId: projectId,
+		baseUrl:   baseUrl,
 	}, nil
 }
 
-func NewRealtimeService(logger *shared.Logger, implConfig ImplConfig) (svc RealtimeService, err error) {
-	switch config := implConfig.(type) {
-	case *OpenaiImplConfig:
-		svc, err = NewOpenaiRealtimeService(logger, config)
-	default:
-		svc, err = nil, fmt.Errorf("unknown implementation: %s", implConfig.Name())
-	}
-	if err != nil {
-		return nil, err
-	}
-	return svc, nil
-}
-
-type OpenaiImplConfig struct {
+type OpenaiConfig struct {
 	ApiKey    string
 	OrgId     string
 	ProjectId string
 	BaseUrl   string
 }
 
-func (c *OpenaiImplConfig) Name() string {
-	return "openai"
-}
-
 type OpenaiRealtimeService struct {
 	logger *shared.Logger
-	cfg    *OpenaiImplConfig
+	cfg    *OpenaiConfig
 }
 
-func NewOpenaiRealtimeService(logger *shared.Logger, cfg *OpenaiImplConfig) (s *OpenaiRealtimeService, err error) {
+func NewOpenaiRealtimeService(logger *shared.Logger, cfg *OpenaiConfig) (s *OpenaiRealtimeService, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("failed to create OpenAI Realtime Service: %w", err)
@@ -97,7 +61,7 @@ func NewOpenaiRealtimeService(logger *shared.Logger, cfg *OpenaiImplConfig) (s *
 	}, nil
 }
 
-func (s *OpenaiRealtimeService) NewClient() (c RealtimeClient, err error) {
+func (s *OpenaiRealtimeService) NewClient() (c *OpenaiRealtimeClient, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("failed to create client: %w", err)
@@ -117,9 +81,9 @@ func main() {
 		zap.String("package", "realtime"),
 		zap.String("example", "openai"),
 	)
-	svc, err := NewRealtimeService(
+	svc, err := NewOpenaiRealtimeService(
 		logger,
-		&OpenaiImplConfig{
+		&OpenaiConfig{
 			ApiKey:    shared.MustGetenv(shared.GetenvString, "OPENAI_API_KEY", true),
 			OrgId:     shared.MustGetenv(shared.GetenvString, "OPENAI_ORG_ID", true),
 			ProjectId: shared.MustGetenv(shared.GetenvString, "OPENAI_PROJECT_ID", true),
