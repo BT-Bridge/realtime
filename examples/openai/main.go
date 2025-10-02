@@ -91,77 +91,6 @@ func (s *OpenaiRealtimeService) NewClient() (c *OpenaiRealtimeClient, err error)
 	)
 }
 
-// NewMicAudioChannel creates a read-only channel that provides chunks of raw PCM audio data
-// from the laptop microphone at 24000 Hz, 16-bit signed, mono.
-// Each chunk is kept small for low latency (e.g., 1024 samples ~42ms, 2048 bytes),
-// but never exceeds 1MiB as per the requirement. The implementation can be abstracted
-// by creating similar functions for other audio sources (e.g., file, network) that return
-// the same channel type, allowing the WebRTC feeder to work with any source.
-func NewMicAudioChannel() <-chan []byte {
-	ch := make(chan []byte)
-
-	go func() {
-		defer close(ch)
-
-		err := portaudio.Initialize()
-		if err != nil {
-			fmt.Printf("Failed to initialize PortAudio: %v\n", err)
-			return
-		}
-		defer func() { _ = portaudio.Terminate() }()
-
-		const (
-			sampleRate   = 24000
-			framesPerBuf = 1024 // Small buffer for low latency (~42ms)
-			channels     = 1    // Mono
-			maxChunkSize = 1 << 20
-		)
-
-		// Buffer for int16 samples
-		samples := make([]int16, framesPerBuf)
-
-		stream, err := portaudio.OpenDefaultStream(channels, 0, float64(sampleRate), framesPerBuf, samples)
-		if err != nil {
-			fmt.Printf("Failed to open stream: %v\n", err)
-			return
-		}
-		defer func() { _ = stream.Close() }()
-
-		err = stream.Start()
-		if err != nil {
-			fmt.Printf("Failed to start stream: %v\n", err)
-			return
-		}
-
-		byteBuf := make([]byte, framesPerBuf*2) // 16-bit = 2 bytes per sample
-		for {
-			err = stream.Read()
-			if err != nil {
-				fmt.Printf("Stream read error: %v\n", err)
-				return
-			}
-
-			// Convert int16 samples to big-endian byte slice (for L16 compatibility)
-			for i, s := range samples {
-				binary.BigEndian.PutUint16(byteBuf[i*2:], uint16(s))
-			}
-
-			chunk := byteBuf
-			if len(chunk) > maxChunkSize {
-				// This shouldn't happen with small framesPerBuf, but truncate if needed
-				chunk = chunk[:maxChunkSize]
-			}
-
-			// Send a copy to avoid race conditions
-			cp := make([]byte, len(chunk))
-			copy(cp, chunk)
-			ch <- cp
-		}
-	}()
-
-	return ch
-}
-
 func main() {
 	logger := shared.NewLogger(
 		zap.String("package", "realtime"),
@@ -495,7 +424,7 @@ func main() {
 	// Set remote description
 
 	// Wait for interrupt to stop
-	sig := make(chan os.Signal, 1)
+
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	fmt.Println("Shutting down...")
