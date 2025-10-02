@@ -108,7 +108,7 @@ func NewMicAudioChannel() <-chan []byte {
 			fmt.Printf("Failed to initialize PortAudio: %v\n", err)
 			return
 		}
-		defer portaudio.Terminate()
+		defer func() { _ = portaudio.Terminate() }()
 
 		const (
 			sampleRate   = 24000
@@ -125,7 +125,7 @@ func NewMicAudioChannel() <-chan []byte {
 			fmt.Printf("Failed to open stream: %v\n", err)
 			return
 		}
-		defer stream.Close()
+		defer func() { _ = stream.Close() }()
 
 		err = stream.Start()
 		if err != nil {
@@ -180,6 +180,7 @@ func main() {
 		logger.NoCtxFatal(err.Error())
 	}
 	client, err := svc.NewClient()
+	_ = client
 	if err != nil {
 		logger.NoCtxFatal(err.Error())
 	}
@@ -242,6 +243,9 @@ func main() {
 		},
 		PayloadType: 111, // Standard PT for Opus
 	}, webrtc.RTPCodecTypeAudio)
+	if err != nil {
+		panic(err)
+	}
 
 	// Create a new API
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(me))
@@ -297,7 +301,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer portaudio.Terminate()
+	defer func() { _ = portaudio.Terminate() }()
 
 	const sampleRate = 24000
 	const channels = 1
@@ -310,7 +314,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer inputStream.Close()
+	defer func() { _ = inputStream.Close() }()
 
 	err = inputStream.Start()
 	if err != nil {
@@ -322,7 +326,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer outputStream.Close()
+	defer func() { _ = outputStream.Close() }()
 
 	err = outputStream.Start()
 	if err != nil {
@@ -489,23 +493,12 @@ func main() {
 	select {}
 
 	// Set remote description
-	err = pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: answerSDP})
-	if err != nil {
-		panic(err)
-	}
-
-	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		fmt.Printf("Connection State has changed: %s\n", s.String())
-	})
-
-	fmt.Println("Session created successfully. Waiting for data channel to open and capturing mic audio...")
 
 	// Wait for interrupt to stop
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	fmt.Println("Shutting down...")
-	_ = client
 }
 
 // TODO: support other fields
