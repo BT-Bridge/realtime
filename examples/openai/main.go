@@ -337,7 +337,7 @@ func main() {
 		webrtc.RTPCodecCapability{
 			MimeType:  webrtc.MimeTypeOpus,
 			ClockRate: 48000,
-			Channels:  1, // mono mic
+			Channels:  2, // stereo mic
 		},
 		"audio",
 		"pion",
@@ -489,11 +489,18 @@ func main() {
 	answerSDP := string(resp.Body())
 	fmt.Println("Received SDP answer from OpenAI:\n", answerSDP)
 
-	select {}
 
 	// Set remote description
+	err = pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: answerSDP})
+	if err != nil {
+		panic(err)
+	}
 
-	fmt.Println("Session created successfully. Waiting for data channel to open and capturing mic audio...")
+	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		fmt.Printf("Connection State has changed: %s\n", s.String())
+	})
+
+	fmt.Println("Session created successfully. Streaming audio...")
 
 	// Wait for interrupt to stop
 	sig := make(chan os.Signal, 1)
